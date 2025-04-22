@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://baxtiyor-abduraim0v.vercel.app/sitemap.xml
