@@ -4,6 +4,17 @@ import { storage, isFirebaseConfigured } from "../../firebase/config";
 import { Upload, X, Plus, Loader2, Image as ImageIcon } from "lucide-react";
 
 const CATEGORIES = ["Web App", "Telegram Bot", "Python", "UI/UX", "Mobile App"];
+const DEFAULT_COVER =
+  "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1000&q=80";
+
+const sanitizeImageUrl = (url) => {
+  if (!url || typeof url !== "string") return "";
+  const trimmed = url.trim();
+  if (trimmed.startsWith("https://") || trimmed.startsWith("data:image/")) {
+    return trimmed;
+  }
+  return "";
+};
 
 export default function ProjectForm({ initialData, onSubmit, onCancel }) {
   const [title, setTitle] = useState("");
@@ -27,7 +38,7 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
       setCategory(initialData.category || "Web App");
       setShortDesc(initialData.short_desc || "");
       setFullDesc(initialData.full_desc || "");
-      setCoverImage(initialData.cover_image || "");
+      setCoverImage(sanitizeImageUrl(initialData.cover_image));
       setTechStack(initialData.tech_stack || []);
       setLiveUrl(initialData.live_url || "");
       setGithubUrl(initialData.github_url || "");
@@ -53,12 +64,19 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
     if (!file) return;
 
     if (!isFirebaseConfigured) {
-      const localUrl = URL.createObjectURL(file);
-      setCoverImage(localUrl);
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          setCoverImage(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+      e.target.value = "";
       return;
     }
 
     setUploading(true);
+    setUploadProgress(0);
     const storageRef = ref(storage, `projects/${Date.now()}_${file.name}`);
     const uploadTask = uploadBytesResumable(storageRef, file);
 
@@ -81,11 +99,15 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
         setUploading(false);
       }
     );
+
+    e.target.value = "";
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim() || !shortDesc.trim()) return;
+
+    const safeImage = sanitizeImageUrl(coverImage);
 
     setSaving(true);
     try {
@@ -94,7 +116,7 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
         category,
         short_desc: shortDesc.trim(),
         full_desc: fullDesc.trim() || shortDesc.trim(),
-        cover_image: coverImage.trim(),
+        cover_image: safeImage,
         tech_stack: techStack,
         live_url: liveUrl.trim(),
         github_url: githubUrl.trim(),
@@ -104,6 +126,8 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
       setSaving(false);
     }
   };
+
+  const previewSrc = sanitizeImageUrl(coverImage) || DEFAULT_COVER;
 
   return (
     <form onSubmit={handleSubmit} className="glass-panel rounded-2xl p-6 sm:p-8 space-y-6">
@@ -222,7 +246,7 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
         {coverImage && (
           <div className="relative w-full h-44 rounded-xl overflow-hidden border border-white/10 bg-dark-900">
             <img
-              src={coverImage}
+              src={previewSrc}
               alt="Preview"
               className="w-full h-full object-cover"
             />
