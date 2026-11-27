@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { storage, isFirebaseConfigured } from "../../firebase/config";
 import { Upload, X, Plus, Loader2, Image as ImageIcon } from "lucide-react";
 
 const CATEGORIES = ["Web App", "Telegram Bot", "Python", "UI/UX", "Mobile App"];
@@ -16,6 +14,35 @@ const sanitizeImageUrl = (url) => {
   return "";
 };
 
+const compressImageToBase64 = (file, maxWidth = 900, quality = 0.78) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error("Rasmni o‘qib bo‘lmadi"));
+      img.src = event.target.result;
+    };
+    reader.onerror = () => reject(new Error("Faylni o‘qishda xatolik"));
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function ProjectForm({ initialData, onSubmit, onCancel }) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("Web App");
@@ -29,7 +56,6 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
   const [featured, setFeatured] = useState(false);
 
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -59,48 +85,26 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
     setTechStack(techStack.filter((t) => t !== techToRemove));
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!isFirebaseConfigured) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === "string") {
-          setCoverImage(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
-      e.target.value = "";
-      return;
-    }
-
     setUploading(true);
-    setUploadProgress(0);
-    const storageRef = ref(storage, `projects/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        const progress = Math.round(
-          (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-        );
-        setUploadProgress(progress);
-      },
-      (error) => {
-        console.error("Rasm yuklashda xatolik:", error);
-        alert("Rasm yuklashda xatolik yuz berdi. URL manzil kiritishdan foydalaning.");
-        setUploading(false);
-      },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        setCoverImage(downloadURL);
-        setUploading(false);
+    try {
+      const compressedBase64 = await compressImageToBase64(file, 900, 0.78);
+      if (compressedBase64.length > 750000) {
+        const smallerBase64 = await compressImageToBase64(file, 650, 0.65);
+        setCoverImage(smallerBase64);
+      } else {
+        setCoverImage(compressedBase64);
       }
-    );
-
-    e.target.value = "";
+    } catch (error) {
+      console.error("Rasmni qayta ishlashda xatolik:", error);
+      alert("Rasmni yuklab bo‘lmadi. Boshqa rasm tanlang yoki URL kiriting.");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -208,14 +212,14 @@ export default function ProjectForm({ initialData, onSubmit, onCancel }) {
 
       <div className="space-y-3">
         <label className="block text-xs font-medium text-slate-300">
-          Muqova rasmi (Fayl yuklang yoki rasm havolasini kiriting)
+          Muqova rasmi (Qurilmadan tanlang yoki rasm havolasini kiriting)
         </label>
         <div className="flex flex-col sm:flex-row gap-3">
           <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 cursor-pointer transition-colors shrink-0">
             {uploading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>{uploadProgress}%</span>
+                <span>Tayyorlanmoqda...</span>
               </>
             ) : (
               <>
